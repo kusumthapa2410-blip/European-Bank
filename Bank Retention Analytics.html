@@ -1,0 +1,322 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Bank Retention Analytics</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Schibsted+Grotesk:wght@600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"></script>
+<style>
+/* Layout: filter rail on the left, KPI strip then a 2x2 chart grid then two customer tables. Rail stacks on top at phone width. */
+:root {
+  --bg: #EDF0F3;
+  --surface: #FFFFFF;
+  --surface-2: #F5F7F9;
+  --fg: #14202B;
+  --muted: #5A6875;
+  --line: #D5DBE1;
+  --accent: #0B6E6E;
+  --accent-soft: #D7ECEA;
+  --risk: #C2410C;
+  --good: #2F7D4F;
+  --font-display: "Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F171E; --surface: #17222B; --surface-2: #1D2A35; --fg: #E6ECF1; --muted: #93A1AE;
+    --line: #2C3B48; --accent: #4FC3BD; --accent-soft: #19403F; --risk: #F28A57; --good: #6CC48D;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F171E; --surface: #17222B; --surface-2: #1D2A35; --fg: #E6ECF1; --muted: #93A1AE;
+  --line: #2C3B48; --accent: #4FC3BD; --accent-soft: #19403F; --risk: #F28A57; --good: #6CC48D;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.5;
+  padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
+h1 { font-family: var(--font-display); font-size: clamp(22px, 3.2vw, 30px); line-height: 1.15; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.sub { color: var(--muted); margin: 4px 0 0; }
+.src { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.badge { font-family: var(--font-mono); font-size: 12px; padding: 4px 10px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 999px; }
+.badge.live { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.btn { font: 500 13px var(--font-body); color: var(--bg); background: var(--accent); border: 0; padding: 8px 14px; border-radius: 6px; cursor: pointer; }
+.btn.alt { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+.btn:hover { filter: brightness(1.08); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.drop { border: 1.5px dashed var(--line); border-radius: 8px; padding: 10px 14px; color: var(--muted); background: var(--surface); font-size: 13px; }
+.drop.over { border-color: var(--accent); color: var(--accent); }
+.msg { padding: 10px 14px; border-radius: 6px; border: 1px solid var(--risk); color: var(--risk); background: var(--surface); }
+.layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+aside { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 18px; }
+aside h2, .panel h2 { font-family: var(--font-display); font-size: 15px; margin: 0; }
+.lab { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 8px; display: block; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px; }
+.checks label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; background: var(--surface-2); }
+.checks input { accent-color: var(--accent); margin: 0; }
+select { width: 100%; font: 14px var(--font-body); color: var(--fg); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 760px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+.kpi .k { font-size: 12px; color: var(--muted); }
+.kpi .v { font-family: var(--font-mono); font-size: clamp(20px, 2.6vw, 28px); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.kpi.risk .v { color: var(--risk); }
+.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 760px) { .charts { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 14px 10px; min-width: 0; }
+.panel p.note { color: var(--muted); font-size: 12px; margin: 4px 0 8px; }
+.chart { height: 290px; width: 100%; }
+.tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.tablebox { overflow: auto; max-height: 340px; border: 1px solid var(--line); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th { position: sticky; top: 0; background: var(--surface-2); color: var(--muted); font-weight: 500; }
+th:first-child, td:first-child { text-align: left; }
+textarea#csvOut { width: 100%; height: 120px; font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; margin-top: 8px; }
+.foot { color: var(--muted); font-size: 12px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Customer Engagement &amp; Product Utilization</h1>
+      <p class="sub">Banking customer retention analytics</p>
+    </div>
+    <div class="src">
+      <span class="badge" id="srcBadge">Sample data</span>
+      <button class="btn" id="pickBtn" type="button">Upload European_Bank.csv</button>
+      <input id="fileInput" type="file" accept=".csv" hidden>
+    </div>
+  </header>
+
+  <div class="drop" id="drop">Showing generated sample data so you can see the layout. Upload your own <b>European_Bank.csv</b> (or drop it here). The file is read in your browser and is never sent anywhere.</div>
+  <div class="msg" id="err" hidden></div>
+
+  <div class="layout">
+    <aside>
+      <h2>Dashboard filters</h2>
+      <div><span class="lab">Geography</span><div class="checks" id="geoChecks"></div></div>
+      <div><span class="lab">Number of products</span><div class="checks" id="prodChecks"></div></div>
+      <div><label class="lab" for="engSel">Engagement status</label>
+        <select id="engSel"><option>All</option><option>Active</option><option>Inactive</option></select></div>
+    </aside>
+
+    <main id="mainArea">
+      <div class="kpis">
+        <div class="kpi"><div class="k">Customers</div><div class="v" id="kTotal"></div></div>
+        <div class="kpi"><div class="k">Customers exited</div><div class="v" id="kExit"></div></div>
+        <div class="kpi risk"><div class="k">Churn rate</div><div class="v" id="kChurn"></div></div>
+        <div class="kpi"><div class="k">Active members</div><div class="v" id="kActive"></div></div>
+      </div>
+
+      <div class="charts">
+        <div class="panel"><h2>Churn by engagement</h2><div class="chart" id="c1"></div></div>
+        <div class="panel"><h2>Churn by product count</h2><div class="chart" id="c2"></div></div>
+        <div class="panel"><h2>Churn by geography</h2><div class="chart" id="c3"></div></div>
+        <div class="panel"><h2>Balance vs engagement</h2><div class="chart" id="c4"></div></div>
+      </div>
+
+      <div class="panel">
+        <div class="tools">
+          <h2>High-balance inactive customers: <span id="hvCount"></span></h2>
+          <button class="btn alt" id="copyHv" type="button">Copy as CSV</button>
+        </div>
+        <p class="note">Inactive, not yet exited, balance in the top quartile of the current selection. This is a screening rule, not a validated prediction of churn or profitability.</p>
+        <div class="tablebox"><table id="hvTable"></table></div>
+      </div>
+
+      <div class="panel">
+        <div class="tools">
+          <h2>Filtered customer data</h2>
+          <button class="btn alt" id="copyAll" type="button">Copy as CSV</button>
+        </div>
+        <p class="note" id="allNote"></p>
+        <div class="tablebox"><table id="allTable"></table></div>
+        <textarea id="csvOut" hidden readonly aria-label="CSV text"></textarea>
+      </div>
+      <p class="foot">Browsers block file downloads from shared pages, so use Copy as CSV and paste into a file or spreadsheet.</p>
+    </main>
+  </div>
+</div>
+
+<script>
+(function () {
+  var REQUIRED = ["CustomerId", "Geography", "Balance", "NumOfProducts", "IsActiveMember", "HasCrCard", "Exited"];
+  var rows = [], state = { geos: new Set(), prods: new Set(), eng: "All" };
+  var $ = function (id) { return document.getElementById(id); };
+  var nf = new Intl.NumberFormat("en-US");
+  var lastFiltered = [], lastHigh = [];
+
+  function sampleData() {
+    var seed = 20261019;
+    function rnd() { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; }
+    var geos = ["France", "Germany", "Spain"], out = [];
+    for (var i = 0; i < 3000; i++) {
+      var g = rnd() < 0.5 ? "France" : (rnd() < 0.5 ? "Germany" : "Spain");
+      var active = rnd() < 0.52 ? 1 : 0;
+      var r = rnd(), np = r < 0.5 ? 1 : r < 0.95 ? 2 : r < 0.99 ? 3 : 4;
+      var bal = (g === "Germany" || rnd() < 0.55) ? Math.round(rnd() * 200000 * 100) / 100 : 0;
+      var p = 0.12 + (active ? 0 : 0.1) + (g === "Germany" ? 0.12 : 0) + (np === 1 ? 0.1 : 0) + (np >= 3 ? 0.5 : 0) - (np === 2 ? 0.08 : 0);
+      out.push({ CustomerId: 15600000 + i, Geography: g, Age: Math.round(22 + rnd() * 45), Balance: bal, NumOfProducts: np,
+        IsActiveMember: active, HasCrCard: rnd() < 0.7 ? 1 : 0, Exited: rnd() < p ? 1 : 0 });
+    }
+    return out;
+  }
+
+  function showErr(t) { var e = $("err"); e.textContent = t; e.hidden = !t; }
+
+  function load(data, label, live) {
+    var cols = data.length ? Object.keys(data[0]) : [];
+    var missing = REQUIRED.filter(function (c) { return cols.indexOf(c) < 0; });
+    if (missing.length) { showErr("Missing required columns: " + missing.join(", ")); return; }
+    showErr("");
+    rows = data.filter(function (r) { return r.Geography != null && r.NumOfProducts != null; });
+    var geos = uniq(rows.map(function (r) { return r.Geography; })).sort();
+    var prods = uniq(rows.map(function (r) { return r.NumOfProducts; })).sort(function (a, b) { return a - b; });
+    state.geos = new Set(geos); state.prods = new Set(prods); state.eng = "All"; $("engSel").value = "All";
+    buildChecks("geoChecks", geos, state.geos, "g");
+    buildChecks("prodChecks", prods, state.prods, "p");
+    var b = $("srcBadge"); b.textContent = label; b.className = "badge" + (live ? " live" : "");
+    $("drop").hidden = !!live;
+    render();
+  }
+
+  function uniq(a) { var s = new Set(a); return Array.from(s); }
+
+  function buildChecks(id, vals, set, pre) {
+    var box = $(id); box.innerHTML = "";
+    vals.forEach(function (v, i) {
+      var l = document.createElement("label"), c = document.createElement("input");
+      c.type = "checkbox"; c.checked = true; c.id = pre + "chk" + i;
+      c.addEventListener("change", function () { c.checked ? set.add(v) : set.delete(v); render(); });
+      l.appendChild(c); l.appendChild(document.createTextNode(String(v))); box.appendChild(l);
+    });
+  }
+
+  function mean(a, k) { var s = 0; a.forEach(function (r) { s += Number(r[k]) || 0; }); return a.length ? s / a.length : 0; }
+  function groupMean(a, key, k) {
+    var m = new Map();
+    a.forEach(function (r) { var g = r[key]; if (!m.has(g)) m.set(g, []); m.get(g).push(r); });
+    return Array.from(m.keys()).sort(function (x, y) { return x < y ? -1 : x > y ? 1 : 0; }).map(function (g) { return { key: g, pct: mean(m.get(g), k) * 100, n: m.get(g).length }; });
+  }
+  function quantile(vals, q) {
+    var s = vals.slice().sort(function (a, b) { return a - b; });
+    if (!s.length) return 0;
+    var pos = (s.length - 1) * q, lo = Math.floor(pos), hi = Math.ceil(pos);
+    return s[lo] + (s[hi] - s[lo]) * (pos - lo);
+  }
+  function esc(v) { return String(v).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function toCSV(a, cols) {
+    var lines = [cols.join(",")];
+    a.forEach(function (r) { lines.push(cols.map(function (c) { var v = r[c] == null ? "" : String(r[c]); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(",")); });
+    return lines.join("\n");
+  }
+  function tableHTML(a, cols, limit) {
+    var h = "<thead><tr>" + cols.map(function (c) { return "<th>" + esc(c) + "</th>"; }).join("") + "</tr></thead><tbody>";
+    a.slice(0, limit).forEach(function (r) {
+      h += "<tr>" + cols.map(function (c) { var v = r[c]; if (typeof v === "number" && c === "Balance") v = nf.format(Math.round(v * 100) / 100); return "<td>" + esc(v == null ? "" : v) + "</td>"; }).join("") + "</tr>";
+    });
+    return h + "</tbody>";
+  }
+
+  function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function layout(extra) {
+    var base = { margin: { t: 14, r: 10, b: 40, l: 48 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+      font: { family: css("--font-body"), color: css("--fg"), size: 12 },
+      xaxis: { gridcolor: css("--line"), linecolor: css("--line"), zeroline: false },
+      yaxis: { gridcolor: css("--line"), linecolor: css("--line"), zeroline: false }, showlegend: false };
+    for (var k in extra) base[k] = Object.assign({}, base[k] || {}, extra[k]);
+    return base;
+  }
+  var CFG = { displayModeBar: false, responsive: true };
+
+  function barChart(id, data, xTitle) {
+    var y = data.map(function (d) { return d.pct; });
+    Plotly.react(id, [{ type: "bar", x: data.map(function (d) { return String(d.key); }), y: y, marker: { color: css("--accent") },
+      text: y.map(function (v) { return v.toFixed(2) + "%"; }), textposition: "outside", cliponaxis: false,
+      customdata: data.map(function (d) { return d.n; }), hovertemplate: "%{x}<br>Churn %{y:.2f}%<br>%{customdata} customers<extra></extra>" }],
+      layout({ xaxis: { title: { text: xTitle } }, yaxis: { title: { text: "Churn rate (%)" }, rangemode: "tozero" } }), CFG);
+  }
+
+  function render() {
+    var f = rows.filter(function (r) {
+      if (!state.geos.has(r.Geography) || !state.prods.has(r.NumOfProducts)) return false;
+      if (state.eng === "Active") return r.IsActiveMember === 1;
+      if (state.eng === "Inactive") return r.IsActiveMember === 0;
+      return true;
+    });
+    lastFiltered = f;
+    var main = $("mainArea");
+    if (!f.length) { showErr("No customers match the selected filters."); main.style.opacity = 0.4; return; }
+    if ($("err").textContent.indexOf("No customers") === 0) showErr("");
+    main.style.opacity = 1;
+
+    var exited = f.reduce(function (s, r) { return s + (Number(r.Exited) || 0); }, 0);
+    $("kTotal").textContent = nf.format(f.length);
+    $("kExit").textContent = nf.format(exited);
+    $("kChurn").textContent = (mean(f, "Exited") * 100).toFixed(2) + "%";
+    $("kActive").textContent = (mean(f, "IsActiveMember") * 100).toFixed(2) + "%";
+
+    var eng = groupMean(f, "IsActiveMember", "Exited").map(function (d) { return { key: d.key === 1 ? "Active" : "Inactive", pct: d.pct, n: d.n }; });
+    barChart("c1", eng, "Engagement");
+    barChart("c2", groupMean(f, "NumOfProducts", "Exited"), "Number of products");
+    barChart("c3", groupMean(f, "Geography", "Exited"), "Geography");
+
+    var traces = [[0, "Inactive"], [1, "Active"]].map(function (p, i) {
+      var vals = f.filter(function (r) { return r.IsActiveMember === p[0]; }).map(function (r) { return r.Balance; });
+      return { type: "box", name: p[1], y: vals, boxpoints: false, marker: { color: i ? css("--accent") : css("--risk") }, line: { color: i ? css("--accent") : css("--risk") } };
+    });
+    Plotly.react("c4", traces, layout({ yaxis: { title: { text: "Customer balance" } } }), CFG);
+
+    var thr = quantile(f.map(function (r) { return Number(r.Balance) || 0; }), 0.75);
+    var hv = f.filter(function (r) { return r.IsActiveMember === 0 && r.Balance >= thr && r.Exited === 0; });
+    lastHigh = hv;
+    $("hvCount").textContent = nf.format(hv.length);
+    var hvCols = ["CustomerId", "Geography", "Age", "Balance", "NumOfProducts", "IsActiveMember"].filter(function (c) { return c in rows[0]; });
+    $("hvTable").innerHTML = tableHTML(hv, hvCols, 300);
+    $("hvTable").dataset.cols = hvCols.join("|");
+    var cols = Object.keys(rows[0]);
+    $("allTable").innerHTML = tableHTML(f, cols, 500);
+    $("allNote").textContent = "Showing the first " + nf.format(Math.min(500, f.length)) + " of " + nf.format(f.length) + " rows. Copy as CSV includes every filtered row.";
+  }
+
+  function copyCSV(a, cols) {
+    var text = toCSV(a, cols), ta = $("csvOut");
+    function fallback() { ta.hidden = false; ta.value = text; ta.focus(); ta.select(); }
+    try { navigator.clipboard.writeText(text).catch(fallback); } catch (e) { fallback(); }
+  }
+
+  $("copyHv").addEventListener("click", function () { copyCSV(lastHigh, $("hvTable").dataset.cols.split("|")); });
+  $("copyAll").addEventListener("click", function () { copyCSV(lastFiltered, Object.keys(rows[0])); });
+  $("engSel").addEventListener("change", function (e) { state.eng = e.target.value; render(); });
+  $("pickBtn").addEventListener("click", function () { $("fileInput").click(); });
+  $("fileInput").addEventListener("change", function (e) { if (e.target.files[0]) readFile(e.target.files[0]); });
+
+  function readFile(file) {
+    Papa.parse(file, { header: true, dynamicTyping: true, skipEmptyLines: true,
+      complete: function (res) { load(res.data, file.name, true); },
+      error: function () { showErr("Could not read that file. Check that it is a CSV."); } });
+  }
+  var drop = $("drop");
+  ["dragover", "dragenter"].forEach(function (ev) { document.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add("over"); }); });
+  ["dragleave", "drop"].forEach(function (ev) { document.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove("over"); }); });
+  document.addEventListener("drop", function (e) { var f = e.dataTransfer && e.dataTransfer.files[0]; if (f) readFile(f); });
+
+  function rerenderTheme() { if (rows.length) render(); }
+  try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", rerenderTheme); } catch (e) {}
+  new MutationObserver(rerenderTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  load(sampleData(), "Sample data", false);
+})();
+</script>
+
+</body></html>
